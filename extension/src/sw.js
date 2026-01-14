@@ -12,12 +12,17 @@ function promisifyChrome(fn, ...args) {
 }
 
 const api = {
-  tabsQuery: (q) => promisifyChrome(chrome.tabs.query, q),
-  tabsMove: (tabIds, moveProps) => promisifyChrome(chrome.tabs.move, tabIds, moveProps),
-  tabsRemove: (tabIds) => promisifyChrome(chrome.tabs.remove, tabIds),
-  windowsCreate: (createData) => promisifyChrome(chrome.windows.create, createData),
-  windowsRemove: (windowId) => promisifyChrome(chrome.windows.remove, windowId),
-  storageLocalGet: (keys) => promisifyChrome(chrome.storage.local.get, keys),
+  tabsQuery: (q) => promisifyChrome(chrome.tabs.query.bind(chrome.tabs), q),
+  tabsMove: (tabIds, moveProps) =>
+    promisifyChrome(chrome.tabs.move.bind(chrome.tabs), tabIds, moveProps),
+  tabsRemove: (tabIds) =>
+    promisifyChrome(chrome.tabs.remove.bind(chrome.tabs), tabIds),
+  windowsCreate: (createData) =>
+    promisifyChrome(chrome.windows.create.bind(chrome.windows), createData),
+  windowsRemove: (windowId) =>
+    promisifyChrome(chrome.windows.remove.bind(chrome.windows), windowId),
+  storageLocalGet: (keys) =>
+    promisifyChrome(chrome.storage.local.get.bind(chrome.storage.local), keys),
 };
 
 const DEFAULT_OPTIONS = {
