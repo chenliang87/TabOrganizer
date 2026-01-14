@@ -1,5 +1,5 @@
 import { buildGroupingPlan } from "./lib/grouping.js";
-import { sortTabsMostRecentFirst } from "./lib/sort.js";
+import { sortTabsBySubdomainThenRecency } from "./lib/sort.js";
 
 function promisifyChrome(fn, ...args) {
   return new Promise((resolve, reject) => {
@@ -80,7 +80,7 @@ async function reorderWindowTabsMostRecentFirst(windowId) {
   const tabs = await api.tabsQuery({ windowId });
   const pinned = tabs.filter((t) => t.pinned);
   const unpinned = tabs.filter((t) => !t.pinned);
-  const sorted = sortTabsMostRecentFirst(unpinned);
+  const sorted = sortTabsBySubdomainThenRecency(unpinned);
   const sortedIds = sorted.map((t) => t.id).filter((id) => Number.isFinite(id));
   if (!sortedIds.length) return;
   try {
