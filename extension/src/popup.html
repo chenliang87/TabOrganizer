@@ -1,0 +1,90 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>TabOrganizer</title>
+    <style>
+      body {
+        font: 13px/1.4 -apple-system, BlinkMacSystemFont, Segoe UI, Roboto,
+          Helvetica, Arial, sans-serif;
+        margin: 0;
+        padding: 12px;
+        width: 340px;
+      }
+      h1 {
+        font-size: 14px;
+        margin: 0 0 8px 0;
+      }
+      .muted {
+        color: #666;
+      }
+      button {
+        width: 100%;
+        padding: 10px 12px;
+        border: 0;
+        border-radius: 8px;
+        background: #1a73e8;
+        color: white;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:disabled {
+        background: #b7b7b7;
+        cursor: not-allowed;
+      }
+      .card {
+        border: 1px solid #e5e5e5;
+        border-radius: 10px;
+        padding: 10px;
+        margin: 10px 0;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>TabOrganizer</h1>
+    <div class="card">
+      <div id="status" class="muted">Loading preview…</div>
+      <div id="summary" style="display: none; margin-top: 8px">
+        <div class="row">
+          <div>Domain windows</div>
+          <div id="domainWindowCount" class="mono">-</div>
+        </div>
+        <div class="row">
+          <div>Tabs to misc</div>
+          <div id="miscTabCount" class="mono">-</div>
+        </div>
+        <div class="row">
+          <div>Ignored (pinned)</div>
+          <div id="ignoredTabCount" class="mono">-</div>
+        </div>
+        <div style="margin-top: 10px">
+          <div class="muted" style="margin-bottom: 6px">Top domain windows</div>
+          <div id="topDomains" class="mono muted"></div>
+        </div>
+        <div style="margin-top: 10px" class="muted">
+          Threshold: <span id="threshold" class="mono">-</span> · Include pinned:
+          <span id="includePinned" class="mono">-</span> · Close emptied windows:
+          <span id="closeEmptyWindows" class="mono">-</span>
+        </div>
+      </div>
+    </div>
+
+    <button id="organizeBtn" disabled>Organize tabs</button>
+    <div style="margin-top: 10px">
+      <a id="openOptions" href="#" class="muted">Options…</a>
+    </div>
+
+    <script type="module" src="./popup.js"></script>
+  </body>
+</html>
+
