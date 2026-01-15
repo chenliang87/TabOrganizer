@@ -6,6 +6,9 @@ A **Chrome Manifest V3 extension** that organizes the tabs in your **current Chr
 - Creates a **new window per domain** when that domain has **more than N tabs** (default `N=5`)
 - Moves all remaining tabs into a **single “misc”** window
 - Sorts tabs inside each new window by **most recently visited first** (using `tab.lastAccessed`)
+- Closes **duplicate tabs** (same URL, ignoring `#...` fragments) before organizing (keeps the most recently visited one)
+- Closes **Zoom “Join Meeting” jump links** like `https://<subdomain>.zoom.us/j/...` before organizing
+- Creates **Chrome tab groups** inside each new window (grouped by subdomain/hostname; falls back to base domain)
 - Optionally closes old windows that become empty after moving tabs
 
 ## Install (Developer Mode)
@@ -32,6 +35,9 @@ Open **Options…** from the popup to configure:
 - **Threshold**: “more than N tabs” per domain → gets its own window
 - **Include pinned tabs**: off by default (safer)
 - **Close emptied old windows**: on by default
+- **Close duplicate tabs**: on by default (keeps the most recently visited one)
+- **Close Zoom jump links**: on by default
+- **Create tab groups**: on by default
 
 ## Notes / Limitations
 

@@ -79,6 +79,30 @@
         </div>
         <input id="closeEmptyWindows" type="checkbox" />
       </div>
+
+      <div class="row">
+        <div>
+          <label for="closeDuplicateTabs">Close duplicate tabs</label>
+          <div class="hint">Close duplicate URLs before organizing (keeps the most recently visited one). Ignores URL fragments (#...).</div>
+        </div>
+        <input id="closeDuplicateTabs" type="checkbox" />
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="closeZoomJumpLinks">Close Zoom jump links</label>
+          <div class="hint">Close Zoom “Join Meeting” pages like https://&lt;subdomain&gt;.zoom.us/j/... before organizing.</div>
+        </div>
+        <input id="closeZoomJumpLinks" type="checkbox" />
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="groupTabs">Create tab groups</label>
+          <div class="hint">In each new window, group tabs by subdomain (hostname). If only one subdomain exists, group by base domain.</div>
+        </div>
+        <input id="groupTabs" type="checkbox" />
+      </div>
     </div>
 
     <div id="savedStatus" class="status">Saved.</div>

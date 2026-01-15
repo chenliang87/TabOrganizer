@@ -4,10 +4,13 @@ const els = {
   domainWindowCount: document.getElementById("domainWindowCount"),
   miscTabCount: document.getElementById("miscTabCount"),
   ignoredTabCount: document.getElementById("ignoredTabCount"),
+  duplicateTabCount: document.getElementById("duplicateTabCount"),
+  zoomJumpLinkCount: document.getElementById("zoomJumpLinkCount"),
   topDomains: document.getElementById("topDomains"),
   threshold: document.getElementById("threshold"),
   includePinned: document.getElementById("includePinned"),
   closeEmptyWindows: document.getElementById("closeEmptyWindows"),
+  groupTabs: document.getElementById("groupTabs"),
   organizeBtn: document.getElementById("organizeBtn"),
   openOptions: document.getElementById("openOptions"),
 };
@@ -20,12 +23,16 @@ function showSummary({
   domainWindowCount,
   miscTabCount,
   ignoredTabCount,
+  duplicateTabCount,
+  zoomJumpLinkCount,
   options,
   topDomains,
 }) {
   els.domainWindowCount.textContent = String(domainWindowCount);
   els.miscTabCount.textContent = String(miscTabCount);
   els.ignoredTabCount.textContent = String(ignoredTabCount ?? 0);
+  els.duplicateTabCount.textContent = String(duplicateTabCount ?? 0);
+  els.zoomJumpLinkCount.textContent = String(zoomJumpLinkCount ?? 0);
 
   const lines = Array.isArray(topDomains)
     ? topDomains.map((d) => `${d.domain} (${d.count})`)
@@ -36,6 +43,7 @@ function showSummary({
   els.includePinned.textContent = options?.includePinned ? "yes" : "no";
   els.closeEmptyWindows.textContent =
     options?.closeEmptyWindows === false ? "no" : "yes";
+  els.groupTabs.textContent = options?.groupTabs === false ? "no" : "yes";
 
   els.summary.style.display = "block";
 }

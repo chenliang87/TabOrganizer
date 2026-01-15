@@ -12,7 +12,7 @@
     "service_worker": "src/sw.js",
     "type": "module"
   },
-  "permissions": ["tabs", "windows", "storage"],
+  "permissions": ["tabs", "windows", "storage", "tabGroups"],
   "host_permissions": ["http://*/*", "https://*/*"]
 }
 
