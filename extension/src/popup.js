@@ -12,6 +12,9 @@ const els = {
   closeEmptyWindows: document.getElementById("closeEmptyWindows"),
   groupTabs: document.getElementById("groupTabs"),
   organizeBtn: document.getElementById("organizeBtn"),
+  currentWindowLabel: document.getElementById("currentWindowLabel"),
+  currentWindowSortMode: document.getElementById("currentWindowSortMode"),
+  sortCurrentWindowBtn: document.getElementById("sortCurrentWindowBtn"),
   openOptions: document.getElementById("openOptions"),
 };
 
@@ -52,6 +55,31 @@ async function sendMessage(msg) {
   return await chrome.runtime.sendMessage(msg);
 }
 
+function windowLabel(win, tabs) {
+  const isFocused = win.focused ? " (focused)" : "";
+  const tabCount = Array.isArray(tabs) ? tabs.length : 0;
+  // Best-effort label: window id + tab count.
+  return `Window ${win.id}${isFocused} · ${tabCount} tabs`;
+}
+
+let currentWindowId = null;
+
+async function refreshCurrentWindow() {
+  els.sortCurrentWindowBtn.disabled = true;
+  els.currentWindowLabel.textContent = "Loading current window…";
+  currentWindowId = null;
+
+  try {
+    const win = await chrome.windows.getCurrent({ populate: true });
+    if (!Number.isFinite(win?.id)) throw new Error("No current window");
+    currentWindowId = win.id;
+    els.currentWindowLabel.textContent = windowLabel(win, win.tabs);
+    els.sortCurrentWindowBtn.disabled = false;
+  } catch {
+    els.currentWindowLabel.textContent = "Unable to read current window.";
+  }
+}
+
 async function refreshPreview() {
   els.organizeBtn.disabled = true;
   setStatus("Loading preview…");
@@ -90,5 +118,25 @@ els.openOptions.addEventListener("click", async (e) => {
   await chrome.runtime.openOptionsPage();
 });
 
+els.sortCurrentWindowBtn.addEventListener("click", async () => {
+  els.sortCurrentWindowBtn.disabled = true;
+  setStatus("Sorting current window…");
+  try {
+    if (!Number.isFinite(currentWindowId)) throw new Error("No current window");
+    const mode = String(els.currentWindowSortMode.value || "recency");
+    const resp = await sendMessage({
+      type: "sortWindows",
+      windowSorts: [{ windowId: currentWindowId, mode }],
+    });
+    if (!resp || resp.ok !== true) throw new Error(resp?.error || "Sort failed");
+    setStatus("Sorted current window.");
+  } catch (e) {
+    setStatus(`Error: ${e?.message || String(e)}`);
+  } finally {
+    await refreshCurrentWindow();
+  }
+});
+
 refreshPreview();
+refreshCurrentWindow();
 

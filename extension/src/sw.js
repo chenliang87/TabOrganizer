@@ -35,6 +35,58 @@ const api = {
     promisifyChrome(chrome.storage.local.get.bind(chrome.storage.local), keys),
 };
 
+function sortTabsByTitleAsc(tabs) {
+  return [...tabs].sort((a, b) => {
+    const ta = typeof a.title === "string" ? a.title : "";
+    const tb = typeof b.title === "string" ? b.title : "";
+    const cmp = ta.localeCompare(tb, undefined, { sensitivity: "base" });
+    if (cmp !== 0) return cmp;
+
+    const ua = typeof a.url === "string" ? a.url : "";
+    const ub = typeof b.url === "string" ? b.url : "";
+    const ucmp = ua.localeCompare(ub);
+    if (ucmp !== 0) return ucmp;
+
+    const ia = Number.isFinite(a.index) ? a.index : 0;
+    const ib = Number.isFinite(b.index) ? b.index : 0;
+    if (ia !== ib) return ia - ib;
+
+    const ida = Number.isFinite(a.id) ? a.id : 0;
+    const idb = Number.isFinite(b.id) ? b.id : 0;
+    return ida - idb;
+  });
+}
+
+function sortTabsByMostRecentDesc(tabs) {
+  return [...tabs].sort((a, b) => {
+    const la = Number.isFinite(a.lastAccessed) ? a.lastAccessed : 0;
+    const lb = Number.isFinite(b.lastAccessed) ? b.lastAccessed : 0;
+    if (lb !== la) return lb - la;
+
+    const ia = Number.isFinite(a.index) ? a.index : 0;
+    const ib = Number.isFinite(b.index) ? b.index : 0;
+    if (ia !== ib) return ia - ib;
+
+    const ida = Number.isFinite(a.id) ? a.id : 0;
+    const idb = Number.isFinite(b.id) ? b.id : 0;
+    return ida - idb;
+  });
+}
+
+async function sortWindowTabs(windowId, mode) {
+  const tabs = await api.tabsQuery({ windowId });
+  const pinned = tabs.filter((t) => t.pinned);
+  const unpinned = tabs.filter((t) => !t.pinned);
+
+  const sorted =
+    mode === "title" ? sortTabsByTitleAsc(unpinned) : sortTabsByMostRecentDesc(unpinned);
+  const sortedIds = sorted.map((t) => t.id).filter((id) => Number.isFinite(id));
+  if (!sortedIds.length) return;
+
+  // Place unpinned tabs immediately after pinned tabs.
+  await api.tabsMove(sortedIds, { windowId, index: pinned.length });
+}
+
 const DEFAULT_OPTIONS = {
   threshold: 5,
   includePinned: false,
@@ -458,6 +510,24 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.type === "organize") {
       const data = await organizeNow();
       sendResponse({ ok: true, data });
+      return;
+    }
+
+    if (msg.type === "sortWindows") {
+      const windowSorts = Array.isArray(msg.windowSorts) ? msg.windowSorts : [];
+      let sortedWindows = 0;
+      for (const w of windowSorts) {
+        const windowId = Number(w?.windowId);
+        const mode = String(w?.mode || "recency");
+        if (!Number.isFinite(windowId)) continue;
+        try {
+          await sortWindowTabs(windowId, mode);
+          sortedWindows += 1;
+        } catch {
+          // best-effort: keep going
+        }
+      }
+      sendResponse({ ok: true, sortedWindows });
       return;
     }
 

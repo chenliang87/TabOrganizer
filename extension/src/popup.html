@@ -48,6 +48,27 @@
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
           "Liberation Mono", "Courier New", monospace;
       }
+      .sectionTitle {
+        font-weight: 700;
+        margin: 14px 0 6px;
+        font-size: 12px;
+      }
+      .windowName {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      select {
+        width: 100%;
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid #e5e5e5;
+        background: white;
+      }
+      .btnSecondary {
+        margin-top: 10px;
+        background: #111;
+      }
     </style>
   </head>
   <body>
@@ -89,6 +110,22 @@
     </div>
 
     <button id="organizeBtn" disabled>Organize tabs</button>
+
+    <div class="sectionTitle">Sort current window</div>
+    <div class="card">
+      <div class="muted" style="margin-bottom: 8px">
+        Pinned tabs stay at the front.
+      </div>
+      <div class="windowName muted" id="currentWindowLabel" style="margin-bottom: 8px"></div>
+      <select id="currentWindowSortMode">
+        <option value="recency" selected>Most recent</option>
+        <option value="title">Title (A→Z)</option>
+      </select>
+      <button id="sortCurrentWindowBtn" class="btnSecondary" disabled style="margin-top: 10px">
+        Sort current window
+      </button>
+    </div>
+
     <div style="margin-top: 10px">
       <a id="openOptions" href="#" class="muted">Options…</a>
     </div>
