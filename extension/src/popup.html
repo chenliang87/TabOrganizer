@@ -12,12 +12,52 @@
         padding: 12px;
         width: 340px;
       }
+      body.mode-tab {
+        width: auto;
+        min-height: 100vh;
+        padding: 18px;
+        background: #fafafa;
+      }
+      body.mode-tab .container {
+        max-width: 980px;
+        margin: 0 auto;
+      }
       h1 {
         font-size: 14px;
         margin: 0 0 8px 0;
       }
       .muted {
         color: #666;
+      }
+      .topBar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+      .topTitle {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+      }
+      .badge {
+        font-size: 11px;
+        color: #666;
+        border: 1px solid #e5e5e5;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: white;
+      }
+      .linkBtn {
+        border: 1px solid #e5e5e5;
+        background: white;
+        color: #111;
+        font-weight: 600;
+        border-radius: 10px;
+        padding: 8px 10px;
+        cursor: pointer;
+        white-space: nowrap;
       }
       button {
         width: 100%;
@@ -69,65 +109,233 @@
         margin-top: 10px;
         background: #111;
       }
+      .tabs {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 8px;
+        margin: 6px 0 12px;
+      }
+      .tabBtn {
+        width: 100%;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid #e5e5e5;
+        background: white;
+        color: #111;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .tabBtn.active {
+        border-color: #1a73e8;
+        box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.12);
+      }
+      .panel {
+        display: none;
+      }
+      .panel.active {
+        display: block;
+      }
+      input[type="search"] {
+        width: 100%;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid #e5e5e5;
+        outline: none;
+      }
+      input[type="search"]:focus {
+        border-color: #1a73e8;
+        box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.15);
+      }
+      .results {
+        margin-top: 10px;
+        max-height: 220px;
+        overflow: auto;
+        border-top: 1px solid #eee;
+        padding-top: 8px;
+      }
+      .resultRow {
+        display: block;
+        width: 100%;
+        text-align: left;
+        border: 0;
+        background: transparent;
+        padding: 8px 6px;
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      .resultRow:hover {
+        background: rgba(26, 115, 232, 0.08);
+      }
+      .resultTitle {
+        font-weight: 600;
+        font-size: 12px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .resultMeta {
+        margin-top: 2px;
+        font-size: 11px;
+        color: #666;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
     </style>
   </head>
   <body>
-    <h1>TabOrganizer</h1>
-    <div class="card">
-      <div id="status" class="muted">Loading preview…</div>
-      <div id="summary" style="display: none; margin-top: 8px">
-        <div class="row">
-          <div>Domain windows</div>
-          <div id="domainWindowCount" class="mono">-</div>
+    <div class="container">
+      <div class="topBar">
+        <div class="topTitle">
+          <h1 style="margin: 0">TabOrganizer</h1>
+          <div id="versionBadge" class="badge"></div>
         </div>
-        <div class="row">
-          <div>Tabs to misc</div>
-          <div id="miscTabCount" class="mono">-</div>
+        <button id="openFullScreen" class="linkBtn" type="button">
+          Open full screen
+        </button>
+      </div>
+
+      <div class="tabs">
+        <button class="tabBtn active" id="tabOrganize" type="button">Organize</button>
+        <button class="tabBtn" id="tabSort" type="button">Sort</button>
+        <button class="tabBtn" id="tabSearch" type="button">Search</button>
+      </div>
+
+      <div id="status" class="muted" style="margin-bottom: 10px">Loading preview…</div>
+
+      <div id="panelOrganize" class="panel active">
+        <div class="card">
+          <div id="summary" style="display: none; margin-top: 8px">
+            <div class="row">
+              <div>Domain windows</div>
+              <div id="domainWindowCount" class="mono">-</div>
+            </div>
+            <div class="row">
+              <div>Tabs to misc</div>
+              <div id="miscTabCount" class="mono">-</div>
+            </div>
+            <div class="row">
+              <div>Ignored (pinned)</div>
+              <div id="ignoredTabCount" class="mono">-</div>
+            </div>
+            <div class="row">
+              <div>Duplicates to close</div>
+              <div id="duplicateTabCount" class="mono">-</div>
+            </div>
+            <div class="row">
+              <div>Zoom jump links to close</div>
+              <div id="zoomJumpLinkCount" class="mono">-</div>
+            </div>
+            <div style="margin-top: 10px">
+              <div class="muted" style="margin-bottom: 6px">Top domain windows</div>
+              <div id="topDomains" class="mono muted"></div>
+            </div>
+            <div style="margin-top: 10px" class="muted">
+              Threshold: <span id="threshold" class="mono">-</span> · Include pinned:
+              <span id="includePinned" class="mono">-</span> · Close emptied windows:
+              <span id="closeEmptyWindows" class="mono">-</span> · Tab groups:
+              <span id="groupTabs" class="mono">-</span>
+            </div>
+          </div>
         </div>
-        <div class="row">
-          <div>Ignored (pinned)</div>
-          <div id="ignoredTabCount" class="mono">-</div>
-        </div>
-        <div class="row">
-          <div>Duplicates to close</div>
-          <div id="duplicateTabCount" class="mono">-</div>
-        </div>
-        <div class="row">
-          <div>Zoom jump links to close</div>
-          <div id="zoomJumpLinkCount" class="mono">-</div>
-        </div>
-        <div style="margin-top: 10px">
-          <div class="muted" style="margin-bottom: 6px">Top domain windows</div>
-          <div id="topDomains" class="mono muted"></div>
-        </div>
-        <div style="margin-top: 10px" class="muted">
-          Threshold: <span id="threshold" class="mono">-</span> · Include pinned:
-          <span id="includePinned" class="mono">-</span> · Close emptied windows:
-          <span id="closeEmptyWindows" class="mono">-</span> · Tab groups:
-          <span id="groupTabs" class="mono">-</span>
+
+        <button id="organizeBtn" disabled>Organize tabs</button>
+      </div>
+
+      <div id="panelSort" class="panel">
+        <div class="sectionTitle">Sort current window</div>
+        <div class="card">
+          <div class="muted" style="margin-bottom: 8px">
+            Pinned tabs stay at the front.
+          </div>
+          <div class="windowName muted" id="currentWindowLabel" style="margin-bottom: 8px"></div>
+          <select id="currentWindowSortMode">
+            <option value="recency" selected>Most recent</option>
+            <option value="title">Title (A→Z)</option>
+          </select>
+          <button id="sortCurrentWindowBtn" class="btnSecondary" disabled style="margin-top: 10px">
+            Sort current window
+          </button>
         </div>
       </div>
-    </div>
 
-    <button id="organizeBtn" disabled>Organize tabs</button>
+      <div id="panelSearch" class="panel">
+        <div class="sectionTitle">Search & act on tabs</div>
+        <div class="card">
+          <input
+            id="searchInput"
+            type="search"
+            placeholder="Search (title and/or URL)…"
+            autocomplete="off"
+          />
+          <div style="margin-top: 10px" class="row">
+            <label style="display: flex; gap: 6px; align-items: center">
+              <input id="searchInTitle" type="checkbox" checked />
+              Title
+            </label>
+            <label style="display: flex; gap: 6px; align-items: center">
+              <input id="searchInUrl" type="checkbox" checked />
+              URL
+            </label>
+            <label style="display: flex; gap: 6px; align-items: center">
+              <input id="searchCaseSensitive" type="checkbox" />
+              Case
+            </label>
+          </div>
 
-    <div class="sectionTitle">Sort current window</div>
-    <div class="card">
-      <div class="muted" style="margin-bottom: 8px">
-        Pinned tabs stay at the front.
+          <div style="margin-top: 10px" class="row">
+            <div style="flex: 1">
+              <div class="muted" style="margin-bottom: 6px">Match</div>
+              <select id="searchMatchMode">
+                <option value="contains" selected>Contains</option>
+                <option value="regex">Regex</option>
+              </select>
+            </div>
+            <div style="flex: 1">
+              <div class="muted" style="margin-bottom: 6px">Scope</div>
+              <select id="searchScope">
+                <option value="allWindows" selected>All windows</option>
+                <option value="currentWindow">Current window</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="margin-top: 10px">
+            <div class="muted" style="margin-bottom: 6px">URL hostname contains (optional)</div>
+            <input
+              id="searchDomain"
+              type="search"
+              placeholder="e.g. wikipedia.org or zoom.us"
+              autocomplete="off"
+            />
+          </div>
+
+          <div style="margin-top: 10px">
+            <div class="muted" style="margin-bottom: 6px">Action</div>
+            <select id="searchAction">
+              <option value="moveToNewWindow" selected>Move matches to a new window</option>
+              <option value="groupMatches">Group matches (in place)</option>
+              <option value="closeMatches">Close matches</option>
+              <option value="dedupeMatches">Close duplicates among matches</option>
+              <option value="closeZoomJumpLinks">Close Zoom jump links among matches</option>
+            </select>
+            <button id="searchRunBtn" class="btnSecondary" disabled style="margin-top: 10px">
+              Run action
+            </button>
+          </div>
+
+          <div id="searchStatus" class="muted" style="margin-top: 8px"></div>
+          <div id="searchResults" class="results" style="display: none"></div>
+        </div>
       </div>
-      <div class="windowName muted" id="currentWindowLabel" style="margin-bottom: 8px"></div>
-      <select id="currentWindowSortMode">
-        <option value="recency" selected>Most recent</option>
-        <option value="title">Title (A→Z)</option>
-      </select>
-      <button id="sortCurrentWindowBtn" class="btnSecondary" disabled style="margin-top: 10px">
-        Sort current window
-      </button>
-    </div>
 
-    <div style="margin-top: 10px">
-      <a id="openOptions" href="#" class="muted">Options…</a>
+      <div style="margin-top: 10px">
+        <a id="openOptions" href="#" class="muted">Options…</a>
+      </div>
+
+      <div class="muted" style="margin-top: 8px">
+        Tip: “Open full screen” leaves room for more features later.
+      </div>
     </div>
 
     <script type="module" src="./popup.js"></script>

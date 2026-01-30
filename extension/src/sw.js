@@ -494,6 +494,145 @@ async function organizeNow() {
   };
 }
 
+function buildSearchMatcher(criteria) {
+  const query = typeof criteria?.query === "string" ? criteria.query : "";
+  const inTitle = criteria?.inTitle !== false;
+  const inUrl = criteria?.inUrl !== false;
+  const matchMode = String(criteria?.matchMode || "contains");
+  const caseSensitive = criteria?.caseSensitive === true;
+  const domainContains = typeof criteria?.domainContains === "string" ? criteria.domainContains.trim() : "";
+
+  let regex = null;
+  if (matchMode === "regex" && query) {
+    const flags = caseSensitive ? "" : "i";
+    regex = new RegExp(query, flags);
+  }
+
+  const q = caseSensitive ? query : query.toLowerCase();
+  const domNeedle = caseSensitive ? domainContains : domainContains.toLowerCase();
+
+  return (tab) => {
+    const title = typeof tab.title === "string" ? tab.title : "";
+    const url = typeof tab.url === "string" ? tab.url : "";
+
+    if (domNeedle) {
+      try {
+        const host = new URL(url).hostname || "";
+        const hh = caseSensitive ? host : host.toLowerCase();
+        if (!hh.includes(domNeedle)) return false;
+      } catch {
+        return false;
+      }
+    }
+
+    if (!query) return true; // domain-only filter
+
+    const haystacks = [];
+    if (inTitle) haystacks.push(title);
+    if (inUrl) haystacks.push(url);
+
+    if (!haystacks.length) return false;
+
+    if (regex) return haystacks.some((h) => regex.test(h));
+
+    const needles = q;
+    return haystacks.some((h) => {
+      const hh = caseSensitive ? h : h.toLowerCase();
+      return hh.includes(needles);
+    });
+  };
+}
+
+function summarizeDuplicatesAmongTabs(tabs, includePinned) {
+  const seen = new Map();
+  let dups = 0;
+  for (const tab of tabs) {
+    if (!includePinned && tab.pinned) continue;
+    const key = normalizeUrlForDedupe(tab.url);
+    if (!key) continue;
+    if (seen.has(key)) dups += 1;
+    else seen.set(key, tab);
+  }
+  return dups;
+}
+
+async function groupMatchingTabsByHostname(matches) {
+  /** @type {Map<number, Map<string, number[]>>} */
+  const byWindow = new Map();
+
+  for (const tab of matches) {
+    if (!Number.isFinite(tab.windowId)) continue;
+    if (!Number.isFinite(tab.id)) continue;
+    if (tab.pinned) continue; // tab groups cannot include pinned tabs
+
+    const host = getHostnameFromTab(tab) || "other";
+    const winMap = byWindow.get(tab.windowId) ?? new Map();
+    const arr = winMap.get(host) ?? [];
+    arr.push(tab.id);
+    winMap.set(host, arr);
+    byWindow.set(tab.windowId, winMap);
+  }
+
+  let groupsCreated = 0;
+  for (const [windowId, hostMap] of byWindow.entries()) {
+    for (const [host, tabIds] of hostMap.entries()) {
+      if (tabIds.length < 2) continue;
+      try {
+        const groupId = await api.tabsGroup({ tabIds, createProperties: { windowId } });
+        const rd = host ? (await getRegistrableDomain(host)) : null;
+        const sub = getSubdomainLabel(host, rd);
+        const title = sub || host || rd || "group";
+        await api.tabGroupsUpdate(groupId, { title });
+        groupsCreated += 1;
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  return { groupsCreated };
+}
+
+async function closeDuplicatesAmongTabs(matches, options) {
+  const includePinned = options.includePinned === true;
+  /** @type {Map<string, chrome.tabs.Tab[]>} */
+  const byKey = new Map();
+  for (const tab of matches) {
+    if (!includePinned && tab.pinned) continue;
+    const key = normalizeUrlForDedupe(tab.url);
+    if (!key) continue;
+    const arr = byKey.get(key);
+    if (arr) arr.push(tab);
+    else byKey.set(key, [tab]);
+  }
+
+  /** @type {number[]} */
+  const toClose = [];
+  for (const group of byKey.values()) {
+    if (group.length <= 1) continue;
+    const keep = pickTabToKeep(group);
+    for (const t of group) {
+      if (t.id !== keep.id && Number.isFinite(t.id)) toClose.push(t.id);
+    }
+  }
+
+  if (toClose.length) {
+    try {
+      await api.tabsRemove(toClose);
+    } catch {
+      for (const id of toClose) {
+        try {
+          await api.tabsRemove(id);
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
+
+  return { closedCount: toClose.length };
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     if (!msg || typeof msg.type !== "string") {
@@ -528,6 +667,121 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         }
       }
       sendResponse({ ok: true, sortedWindows });
+      return;
+    }
+
+    if (msg.type === "searchPreview") {
+      const options = await getOptions();
+      const criteria = msg.criteria || {};
+      const scope = String(criteria.scope || "allWindows");
+      const currentWindowId = Number(criteria.currentWindowId);
+      const includePinned = options.includePinned === true;
+
+      const tabs =
+        scope === "currentWindow" && Number.isFinite(currentWindowId)
+          ? await api.tabsQuery({ windowId: currentWindowId })
+          : await api.tabsQuery({});
+
+      const predicate = buildSearchMatcher(criteria);
+      const matches = tabs.filter((t) => {
+        try {
+          return predicate(t);
+        } catch {
+          return false;
+        }
+      });
+
+      const duplicateCount = summarizeDuplicatesAmongTabs(matches, includePinned);
+      const zoomJumpLinkCount = matches.filter((t) => isZoomJumpLinkUrl(t.url)).length;
+
+      const results = matches
+        .slice(0, 50)
+        .map((t) => ({ id: t.id, title: t.title, url: t.url, windowId: t.windowId, index: t.index }));
+
+      sendResponse({
+        ok: true,
+        data: {
+          matchCount: matches.length,
+          duplicateCount,
+          zoomJumpLinkCount,
+          results,
+        },
+      });
+      return;
+    }
+
+    if (msg.type === "searchExecute") {
+      const options = await getOptions();
+      const criteria = msg.criteria || {};
+      const scope = String(criteria.scope || "allWindows");
+      const currentWindowId = Number(criteria.currentWindowId);
+      const action = String(criteria.action || "moveToNewWindow");
+
+      const tabs =
+        scope === "currentWindow" && Number.isFinite(currentWindowId)
+          ? await api.tabsQuery({ windowId: currentWindowId })
+          : await api.tabsQuery({});
+
+      const predicate = buildSearchMatcher(criteria);
+      const matches = tabs.filter((t) => {
+        try {
+          return predicate(t);
+        } catch {
+          return false;
+        }
+      });
+
+      // Safety: refuse to act on empty.
+      if (!matches.length) {
+        sendResponse({ ok: true, data: { message: "No matches." } });
+        return;
+      }
+
+      // Respect pinned handling from global options for destructive actions.
+      const includePinned = options.includePinned === true;
+      const actionable = includePinned ? matches : matches.filter((t) => !t.pinned);
+
+      if (action === "closeMatches") {
+        const ids = actionable.map((t) => t.id).filter((id) => Number.isFinite(id));
+        if (ids.length) await api.tabsRemove(ids);
+        sendResponse({ ok: true, data: { message: `Closed ${ids.length} tab(s).` } });
+        return;
+      }
+
+      if (action === "closeZoomJumpLinks") {
+        const ids = actionable
+          .filter((t) => isZoomJumpLinkUrl(t.url))
+          .map((t) => t.id)
+          .filter((id) => Number.isFinite(id));
+        if (ids.length) await api.tabsRemove(ids);
+        sendResponse({ ok: true, data: { message: `Closed ${ids.length} Zoom jump tab(s).` } });
+        return;
+      }
+
+      if (action === "dedupeMatches") {
+        const dedupe = await closeDuplicatesAmongTabs(matches, options);
+        sendResponse({ ok: true, data: { message: `Closed ${dedupe.closedCount} duplicate tab(s).` } });
+        return;
+      }
+
+      if (action === "groupMatches") {
+        const grouped = await groupMatchingTabsByHostname(matches);
+        sendResponse({ ok: true, data: { message: `Created ${grouped.groupsCreated} group(s).` } });
+        return;
+      }
+
+      if (action === "moveToNewWindow") {
+        const tabIds = actionable.map((t) => t.id).filter((id) => Number.isFinite(id));
+        const { windowId, placeholderTabId } = await createEmptyWindow();
+        await safeMoveTabsToWindow(tabIds, windowId);
+        await removePlaceholderTab(placeholderTabId);
+        await reorderWindowTabsMostRecentFirst(windowId);
+        await groupWindowTabs(windowId, options);
+        sendResponse({ ok: true, data: { message: `Moved ${tabIds.length} tab(s) to a new window.` } });
+        return;
+      }
+
+      sendResponse({ ok: false, error: `Unknown search action: ${action}` });
       return;
     }
 
