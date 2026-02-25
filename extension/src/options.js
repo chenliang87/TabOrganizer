@@ -5,6 +5,7 @@ const DEFAULTS = {
   closeDuplicateTabs: true,
   closeZoomJumpLinks: true,
   groupTabs: true,
+  unpinForGrouping: false,
 };
 
 const els = {
@@ -14,6 +15,7 @@ const els = {
   closeDuplicateTabs: document.getElementById("closeDuplicateTabs"),
   closeZoomJumpLinks: document.getElementById("closeZoomJumpLinks"),
   groupTabs: document.getElementById("groupTabs"),
+  unpinForGrouping: document.getElementById("unpinForGrouping"),
   savedStatus: document.getElementById("savedStatus"),
 };
 
@@ -39,6 +41,7 @@ async function load() {
   els.closeDuplicateTabs.checked = stored.closeDuplicateTabs !== false;
   els.closeZoomJumpLinks.checked = stored.closeZoomJumpLinks !== false;
   els.groupTabs.checked = stored.groupTabs !== false;
+  els.unpinForGrouping.checked = stored.unpinForGrouping === true;
 }
 
 async function save() {
@@ -49,6 +52,7 @@ async function save() {
     closeDuplicateTabs: els.closeDuplicateTabs.checked,
     closeZoomJumpLinks: els.closeZoomJumpLinks.checked,
     groupTabs: els.groupTabs.checked,
+    unpinForGrouping: els.unpinForGrouping.checked,
   };
   await chrome.storage.local.set(payload);
   showSaved();
@@ -60,6 +64,7 @@ els.closeEmptyWindows.addEventListener("change", save);
 els.closeDuplicateTabs.addEventListener("change", save);
 els.closeZoomJumpLinks.addEventListener("change", save);
 els.groupTabs.addEventListener("change", save);
+els.unpinForGrouping.addEventListener("change", save);
 
 load();
 

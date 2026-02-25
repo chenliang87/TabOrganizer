@@ -18,6 +18,8 @@ const api = {
     promisifyChrome(chrome.tabs.move.bind(chrome.tabs), tabIds, moveProps),
   tabsRemove: (tabIds) =>
     promisifyChrome(chrome.tabs.remove.bind(chrome.tabs), tabIds),
+  tabsUpdate: (tabId, updateProps) =>
+    promisifyChrome(chrome.tabs.update.bind(chrome.tabs), tabId, updateProps),
   tabsGroup: (opts) => promisifyChrome(chrome.tabs.group.bind(chrome.tabs), opts),
   tabsUngroup: (tabIds) =>
     promisifyChrome(chrome.tabs.ungroup.bind(chrome.tabs), tabIds),
@@ -31,6 +33,8 @@ const api = {
       groupId,
       updateProps,
     ),
+  tabGroupsGet: (groupId) =>
+    promisifyChrome(chrome.tabGroups.get.bind(chrome.tabGroups), groupId),
   storageLocalGet: (keys) =>
     promisifyChrome(chrome.storage.local.get.bind(chrome.storage.local), keys),
 };
@@ -94,6 +98,7 @@ const DEFAULT_OPTIONS = {
   closeDuplicateTabs: true,
   closeZoomJumpLinks: true,
   groupTabs: true,
+  unpinForGrouping: false,
 };
 
 async function getOptions() {
@@ -105,6 +110,7 @@ async function getOptions() {
     closeDuplicateTabs: stored.closeDuplicateTabs !== false,
     closeZoomJumpLinks: stored.closeZoomJumpLinks !== false,
     groupTabs: stored.groupTabs !== false,
+    unpinForGrouping: stored.unpinForGrouping === true,
   };
 }
 
@@ -237,8 +243,16 @@ function safeUrl(url) {
 function getHostnameFromTab(tab) {
   const u = safeUrl(tab.url || "");
   if (!u) return "";
-  if (u.protocol !== "http:" && u.protocol !== "https:") return "";
   return (u.hostname || "").toLowerCase();
+}
+
+function getGroupKeyForTab(tab) {
+  const u = safeUrl(tab.url || "");
+  if (!u) return "other";
+  const host = (u.hostname || "").toLowerCase();
+  if (host) return host;
+  // For hostless URLs (e.g. about:blank), group by protocol.
+  return `${u.protocol}//`;
 }
 
 function getSubdomainLabel(hostname, registrableDomain) {
@@ -248,8 +262,36 @@ function getSubdomainLabel(hostname, registrableDomain) {
   if (!registrableDomain) return parts[0];
 
   const rdParts = registrableDomain.split(".").filter(Boolean);
-  if (parts.length > rdParts.length) return parts[0];
+  // Immediate label before the registrable domain:
+  // dev.smith.langchain.com (rd=langchain.com) -> smith
+  // mail.google.com (rd=google.com) -> mail
+  if (parts.length > rdParts.length) {
+    const idx = parts.length - rdParts.length - 1;
+    return parts[idx] || "";
+  }
   return "";
+}
+
+function getWikipediaLanguageFromHost(hostname) {
+  const h = String(hostname || "").toLowerCase();
+  if (!(h === "wikipedia.org" || h.endsWith(".wikipedia.org"))) return "";
+  const parts = h.split(".").filter(Boolean);
+  // en.wikipedia.org => ["en","wikipedia","org"]
+  // zh.m.wikipedia.org => ["zh","m","wikipedia","org"]
+  if (parts.length < 3) return "";
+  if (parts[1] === "m") return parts[0];
+  return parts[0];
+}
+
+async function getGroupLabelForHost(host) {
+  if (!host) return "";
+  // Special-case wikipedia mobile: zh.m.wikipedia.org should group as "zh"
+  const wikiLang = getWikipediaLanguageFromHost(host);
+  if (wikiLang) return wikiLang;
+
+  const rd = host.includes(".") ? await getRegistrableDomain(host) : null;
+  const sub = getSubdomainLabel(host, rd);
+  return sub || rd || host;
 }
 
 async function groupWindowTabs(windowId, options) {
@@ -257,8 +299,24 @@ async function groupWindowTabs(windowId, options) {
 
   const tabs = await api.tabsQuery({ windowId });
 
-  // Tab groups can't include pinned tabs, so always exclude them.
-  const eligible = tabs.filter((t) => !t.pinned && Number.isFinite(t.id));
+  // Tab groups can't include pinned tabs. If requested, we can unpin first.
+  if (options.unpinForGrouping) {
+    const pinnedIds = tabs
+      .filter((t) => t.pinned && Number.isFinite(t.id))
+      .map((t) => t.id);
+    for (const id of pinnedIds) {
+      try {
+        await api.tabsUpdate(id, { pinned: false });
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  const tabsAfter = options.unpinForGrouping ? await api.tabsQuery({ windowId }) : tabs;
+
+  // Exclude pinned tabs (cannot be grouped).
+  const eligible = tabsAfter.filter((t) => !t.pinned && Number.isFinite(t.id));
   if (eligible.length === 0) return;
 
   // Best-effort: ungroup existing groups so repeated runs don't accumulate.
@@ -275,11 +333,32 @@ async function groupWindowTabs(windowId, options) {
 
   /** @type {Map<string, { tabIds:number[], host:string, rd:string|null }>} */
   const byKey = new Map();
+  /** @type {Map<string, string|null>} */
+  const rdCache = new Map();
+  /** @type {Map<string, string>} */
+  const labelCache = new Map();
   for (const tab of eligible) {
     const host = getHostnameFromTab(tab);
-    const rd = host ? (await getRegistrableDomain(host)) : null;
-    // Prefer grouping by hostname (subdomain). If missing, fall back to domain.
-    const key = host || rd || "other";
+    let rd = null;
+    if (host && host.includes(".")) {
+      if (rdCache.has(host)) rd = rdCache.get(host);
+      else {
+        rd = await getRegistrableDomain(host);
+        rdCache.set(host, rd);
+      }
+    }
+
+    // Group by immediate subdomain label (fallback to base domain, then protocol bucket)
+    let label = "";
+    if (host) {
+      if (labelCache.has(host)) label = labelCache.get(host);
+      else {
+        label = await getGroupLabelForHost(host);
+        labelCache.set(host, label);
+      }
+    }
+
+    const key = label || rd || host || getGroupKeyForTab(tab);
     const entry = byKey.get(key);
     if (entry) entry.tabIds.push(tab.id);
     else byKey.set(key, { tabIds: [tab.id], host, rd });
@@ -302,13 +381,71 @@ async function groupWindowTabs(windowId, options) {
         title = info.rd || info.host || key;
       } else {
         const sub = getSubdomainLabel(info.host, info.rd);
+        // Prefer label-based title when grouping label differs from hostname.
         title = sub || info.rd || info.host || key;
       }
 
-      await api.tabGroupsUpdate(groupId, { title });
+      await api.tabGroupsUpdate(groupId, { title, collapsed: true });
     } catch {
       // ignore
     }
+  }
+}
+
+async function reorderGroupsBySizeThenName(windowId) {
+  const tabs = await api.tabsQuery({ windowId });
+  const pinned = tabs.filter((t) => t.pinned).sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+  const unpinned = tabs.filter((t) => !t.pinned);
+
+  /** @type {Map<number, chrome.tabs.Tab[]>} */
+  const byGroupId = new Map();
+  /** @type {chrome.tabs.Tab[]} */
+  const ungrouped = [];
+
+  for (const t of unpinned) {
+    if (Number.isFinite(t.groupId) && t.groupId !== -1) {
+      const arr = byGroupId.get(t.groupId) ?? [];
+      arr.push(t);
+      byGroupId.set(t.groupId, arr);
+    } else {
+      ungrouped.push(t);
+    }
+  }
+
+  if (byGroupId.size === 0) return;
+
+  const groupInfos = [];
+  for (const [groupId, groupTabs] of byGroupId.entries()) {
+    let title = "";
+    try {
+      const g = await api.tabGroupsGet(groupId);
+      title = typeof g?.title === "string" ? g.title : "";
+    } catch {
+      // ignore
+    }
+    groupTabs.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+    groupInfos.push({ groupId, title, size: groupTabs.length, tabs: groupTabs });
+  }
+
+  groupInfos.sort((a, b) => {
+    if (b.size !== a.size) return b.size - a.size;
+    return String(a.title || "").localeCompare(String(b.title || ""), undefined, {
+      sensitivity: "base",
+    });
+  });
+
+  const ungroupedSorted = [...ungrouped].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+  const desiredUnpinnedIds = [
+    ...groupInfos.flatMap((g) => g.tabs.map((t) => t.id)),
+    ...ungroupedSorted.map((t) => t.id),
+  ].filter((id) => Number.isFinite(id));
+
+  if (!desiredUnpinnedIds.length) return;
+
+  try {
+    await api.tabsMove(desiredUnpinnedIds, { windowId, index: pinned.length });
+  } catch {
+    // ignore
   }
 }
 
@@ -457,6 +594,10 @@ async function organizeNow() {
     await removePlaceholderTab(miscDest.placeholderTabId);
     await reorderWindowTabsMostRecentFirst(miscDest.windowId);
     await groupWindowTabs(miscDest.windowId, options);
+    // Misc window: place the largest tab-groups first (tie-breaker: group name A→Z)
+    if (options.groupTabs) {
+      await reorderGroupsBySizeThenName(miscDest.windowId);
+    }
   }
 
   // Close now-empty old windows (best-effort, safety-checked).
@@ -565,24 +706,24 @@ async function groupMatchingTabsByHostname(matches) {
     if (!Number.isFinite(tab.id)) continue;
     if (tab.pinned) continue; // tab groups cannot include pinned tabs
 
-    const host = getHostnameFromTab(tab) || "other";
+    const host = getHostnameFromTab(tab);
+    const label = host ? await getGroupLabelForHost(host) : "";
+    const key = label || host || getGroupKeyForTab(tab);
     const winMap = byWindow.get(tab.windowId) ?? new Map();
-    const arr = winMap.get(host) ?? [];
+    const arr = winMap.get(key) ?? [];
     arr.push(tab.id);
-    winMap.set(host, arr);
+    winMap.set(key, arr);
     byWindow.set(tab.windowId, winMap);
   }
 
   let groupsCreated = 0;
   for (const [windowId, hostMap] of byWindow.entries()) {
-    for (const [host, tabIds] of hostMap.entries()) {
+    for (const [key, tabIds] of hostMap.entries()) {
       if (tabIds.length < 2) continue;
       try {
         const groupId = await api.tabsGroup({ tabIds, createProperties: { windowId } });
-        const rd = host ? (await getRegistrableDomain(host)) : null;
-        const sub = getSubdomainLabel(host, rd);
-        const title = sub || host || rd || "group";
-        await api.tabGroupsUpdate(groupId, { title });
+        const title = key || "group";
+        await api.tabGroupsUpdate(groupId, { title, collapsed: true });
         groupsCreated += 1;
       } catch {
         // ignore

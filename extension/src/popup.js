@@ -130,7 +130,10 @@ async function refreshCurrentWindow() {
   }
 
   // Refresh search status/results when the focused window changes.
-  renderSearchResults();
+  // Best-effort: only recompute search preview when Search tab is open.
+  if (els.panelSearch?.classList?.contains("active")) {
+    await refreshSearchPreview();
+  }
 }
 
 async function refreshAllWindowsTabs() {

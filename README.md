@@ -28,6 +28,20 @@ Repeat the above in any other Chrome Profile where you want TabOrganizer availab
 3. Review the preview (how many domain windows will be created, tabs going to misc)
 4. Click **Organize tabs**
 
+## Search (find + move/close/group)
+
+In the popup, open the **Search** tab to:
+
+- Search by **Title and/or URL**
+- Use **contains** matching or **regex**
+- Restrict to **current window** or **all windows**
+- Run actions on matches:
+  - Move matches to a new window
+  - Group matches (in place)
+  - Close matches
+  - Close duplicates among matches
+  - Close Zoom jump links among matches
+
 ## Options
 
 Open **Options…** from the popup to configure:
@@ -38,6 +52,7 @@ Open **Options…** from the popup to configure:
 - **Close duplicate tabs**: on by default (keeps the most recently visited one)
 - **Close Zoom jump links**: on by default
 - **Create tab groups**: on by default
+- **Unpin tabs for grouping**: off by default (Chrome can’t group pinned tabs)
 
 ## Notes / Limitations
 
