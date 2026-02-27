@@ -111,7 +111,7 @@
       }
       .tabs {
         display: grid;
-        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-columns: 1fr 1fr 1fr 1fr;
         gap: 8px;
         margin: 6px 0 12px;
       }
@@ -199,6 +199,7 @@
         <button class="tabBtn active" id="tabOrganize" type="button">Organize</button>
         <button class="tabBtn" id="tabSort" type="button">Sort</button>
         <button class="tabBtn" id="tabSearch" type="button">Search</button>
+        <button class="tabBtn" id="tabClear" type="button">Clear</button>
       </div>
 
       <div id="status" class="muted" style="margin-bottom: 10px">Loading preview…</div>
@@ -326,6 +327,38 @@
 
           <div id="searchStatus" class="muted" style="margin-top: 8px"></div>
           <div id="searchResults" class="results" style="display: none"></div>
+        </div>
+      </div>
+
+      <div id="panelClear" class="panel">
+        <div class="sectionTitle">Close stale tabs</div>
+        <div class="card">
+          <div class="muted" style="margin-bottom: 8px">
+            Close tabs you haven't visited in a while.
+          </div>
+          <div class="row">
+            <div style="flex: 1">
+              <div class="muted" style="margin-bottom: 6px">Not visited in</div>
+              <select id="clearPeriod">
+                <option value="hour">Last hour</option>
+                <option value="day" selected>Last day</option>
+                <option value="week">Last week</option>
+                <option value="month">Last month</option>
+              </select>
+            </div>
+            <div style="flex: 1">
+              <div class="muted" style="margin-bottom: 6px">Scope</div>
+              <select id="clearScope">
+                <option value="allWindows" selected>All windows</option>
+                <option value="currentWindow">Current window</option>
+              </select>
+            </div>
+          </div>
+          <div id="clearStatus" class="muted" style="margin-top: 10px"></div>
+          <div id="clearResults" class="results" style="display: none"></div>
+          <button id="clearRunBtn" class="btnSecondary" disabled style="margin-top: 10px">
+            Close stale tabs
+          </button>
         </div>
       </div>
 

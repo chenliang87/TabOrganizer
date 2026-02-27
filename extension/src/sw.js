@@ -926,6 +926,74 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       return;
     }
 
+    if (msg.type === "clearPreview" || msg.type === "clearExecute") {
+      const PERIOD_MS = {
+        hour: 3_600_000,
+        day: 86_400_000,
+        week: 604_800_000,
+        month: 2_592_000_000,
+      };
+      const period = String(msg.period || "day");
+      const periodMs = PERIOD_MS[period] ?? PERIOD_MS.day;
+      const cutoff = Date.now() - periodMs;
+
+      const options = await getOptions();
+      const includePinned = options.includePinned === true;
+      const scope = String(msg.scope || "allWindows");
+      const currentWindowId = Number(msg.currentWindowId);
+
+      const tabs =
+        scope === "currentWindow" && Number.isFinite(currentWindowId)
+          ? await api.tabsQuery({ windowId: currentWindowId })
+          : await api.tabsQuery({});
+
+      const stale = tabs.filter((t) => {
+        if (!includePinned && t.pinned) return false;
+        if (t.active) return false;
+        const la = Number.isFinite(t.lastAccessed) ? t.lastAccessed : 0;
+        return la > 0 && la < cutoff;
+      });
+
+      if (msg.type === "clearPreview") {
+        const now = Date.now();
+        const formatAgo = (ms) => {
+          const sec = Math.floor(ms / 1000);
+          if (sec < 60) return `${sec}s ago`;
+          const min = Math.floor(sec / 60);
+          if (min < 60) return `${min}m ago`;
+          const hr = Math.floor(min / 60);
+          if (hr < 24) return `${hr}h ago`;
+          const days = Math.floor(hr / 24);
+          return `${days}d ago`;
+        };
+
+        const results = stale.slice(0, 50).map((t) => ({
+          id: t.id,
+          title: t.title,
+          url: t.url,
+          windowId: t.windowId,
+          index: t.index,
+          lastAccessedAgo: formatAgo(now - (t.lastAccessed || 0)),
+        }));
+
+        sendResponse({ ok: true, data: { staleCount: stale.length, results } });
+        return;
+      }
+
+      const ids = stale.map((t) => t.id).filter((id) => Number.isFinite(id));
+      if (ids.length) {
+        try {
+          await api.tabsRemove(ids);
+        } catch {
+          for (const id of ids) {
+            try { await api.tabsRemove(id); } catch { /* ignore */ }
+          }
+        }
+      }
+      sendResponse({ ok: true, data: { closedCount: ids.length } });
+      return;
+    }
+
     sendResponse({ ok: false, error: `Unknown message type: ${msg.type}` });
   })().catch((e) => {
     sendResponse({ ok: false, error: e?.message || String(e) });

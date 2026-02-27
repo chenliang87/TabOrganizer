@@ -31,9 +31,16 @@ const els = {
   tabOrganize: document.getElementById("tabOrganize"),
   tabSort: document.getElementById("tabSort"),
   tabSearch: document.getElementById("tabSearch"),
+  tabClear: document.getElementById("tabClear"),
   panelOrganize: document.getElementById("panelOrganize"),
   panelSort: document.getElementById("panelSort"),
   panelSearch: document.getElementById("panelSearch"),
+  panelClear: document.getElementById("panelClear"),
+  clearPeriod: document.getElementById("clearPeriod"),
+  clearScope: document.getElementById("clearScope"),
+  clearStatus: document.getElementById("clearStatus"),
+  clearResults: document.getElementById("clearResults"),
+  clearRunBtn: document.getElementById("clearRunBtn"),
   openOptions: document.getElementById("openOptions"),
 };
 
@@ -60,6 +67,7 @@ function setActiveTab(which) {
     { btn: els.tabOrganize, panel: els.panelOrganize, key: "organize" },
     { btn: els.tabSort, panel: els.panelSort, key: "sort" },
     { btn: els.tabSearch, panel: els.panelSearch, key: "search" },
+    { btn: els.tabClear, panel: els.panelClear, key: "clear" },
   ];
   for (const m of mapping) {
     const active = m.key === which;
@@ -399,6 +407,109 @@ els.tabSearch.addEventListener("click", async () => {
   await refreshAllWindowsTabs();
   await refreshSearchPreview();
 });
+els.tabClear.addEventListener("click", async () => {
+  setActiveTab("clear");
+  await refreshClearPreview();
+});
+
+async function refreshClearPreview() {
+  els.clearRunBtn.disabled = true;
+  els.clearStatus.textContent = "Loading…";
+  els.clearResults.style.display = "none";
+  els.clearResults.textContent = "";
+
+  const period = String(els.clearPeriod.value || "day");
+  const scope = String(els.clearScope.value || "allWindows");
+
+  try {
+    const resp = await sendMessage({
+      type: "clearPreview",
+      period,
+      scope,
+      currentWindowId,
+    });
+    if (!resp || resp.ok !== true) throw new Error(resp?.error || "Clear preview failed");
+
+    const data = resp.data;
+    const count = Number.isFinite(data?.staleCount) ? data.staleCount : 0;
+    const results = Array.isArray(data?.results) ? data.results : [];
+
+    if (!count) {
+      els.clearStatus.textContent = "No stale tabs found.";
+      els.clearResults.style.display = "none";
+      els.clearRunBtn.disabled = true;
+      return;
+    }
+
+    els.clearStatus.textContent = `${count} stale tab(s) found.`;
+    els.clearRunBtn.disabled = false;
+    els.clearResults.style.display = "block";
+    els.clearResults.textContent = "";
+
+    for (const t of results) {
+      if (!Number.isFinite(t.id) || !Number.isFinite(t.windowId)) continue;
+
+      const btn = document.createElement("button");
+      btn.className = "resultRow";
+      btn.type = "button";
+
+      const title = document.createElement("div");
+      title.className = "resultTitle";
+      title.textContent = t.title || "(untitled)";
+
+      const meta = document.createElement("div");
+      meta.className = "resultMeta";
+      const ago = t.lastAccessedAgo || "";
+      meta.textContent = `${windowLabelForSearch(t.windowId)} · ${safeHost(t.url)}${ago ? ` · ${ago}` : ""}`;
+
+      btn.appendChild(title);
+      btn.appendChild(meta);
+
+      btn.addEventListener("click", async () => {
+        try {
+          await chrome.tabs.update(t.id, { active: true });
+          await chrome.windows.update(t.windowId, { focused: true });
+          if (!isTabMode) window.close();
+        } catch (e) {
+          setStatus(`Error: ${e?.message || String(e)}`);
+        }
+      });
+
+      els.clearResults.appendChild(btn);
+    }
+  } catch (e) {
+    els.clearStatus.textContent = `Error: ${e?.message || String(e)}`;
+    els.clearResults.style.display = "none";
+  }
+}
+
+els.clearRunBtn.addEventListener("click", async () => {
+  els.clearRunBtn.disabled = true;
+  const period = String(els.clearPeriod.value || "day");
+  const scope = String(els.clearScope.value || "allWindows");
+  setStatus("Closing stale tabs…");
+
+  try {
+    const resp = await sendMessage({
+      type: "clearExecute",
+      period,
+      scope,
+      currentWindowId,
+    });
+    if (!resp || resp.ok !== true) throw new Error(resp?.error || "Clear action failed");
+    setStatus(`Done. Closed ${resp.data?.closedCount ?? 0} stale tab(s).`);
+  } catch (e) {
+    setStatus(`Error: ${e?.message || String(e)}`);
+  } finally {
+    await refreshPreview();
+    await refreshCurrentWindow();
+    await refreshAllWindowsTabs();
+    await refreshClearPreview();
+  }
+});
+
+els.clearPeriod.addEventListener("change", () => refreshClearPreview());
+els.clearScope.addEventListener("change", () => refreshClearPreview());
 
 els.openFullScreen.addEventListener("click", async () => {
   const url = chrome.runtime.getURL("src/popup.html?mode=tab");
