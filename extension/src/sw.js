@@ -331,8 +331,10 @@ async function groupWindowTabs(windowId, options) {
     }
   }
 
-  /** @type {Map<string, { tabIds:number[], host:string, rd:string|null }>} */
+  /** @type {Map<string, { tabIds:number[], host:string, rd:string|null, label:string }>} */
   const byKey = new Map();
+  /** @type {Set<string>} */
+  const baseKeys = new Set();
   /** @type {Map<string, string|null>} */
   const rdCache = new Map();
   /** @type {Map<string, string>} */
@@ -348,7 +350,7 @@ async function groupWindowTabs(windowId, options) {
       }
     }
 
-    // Group by immediate subdomain label (fallback to base domain, then protocol bucket)
+    // Compute a short label for titles (not membership).
     let label = "";
     if (host) {
       if (labelCache.has(host)) label = labelCache.get(host);
@@ -358,14 +360,16 @@ async function groupWindowTabs(windowId, options) {
       }
     }
 
-    const key = label || rd || host || getGroupKeyForTab(tab);
+    // Membership key must be full hostname to avoid cross-domain collisions (e.g. many sites have "www").
+    const key = host || getGroupKeyForTab(tab);
+    baseKeys.add(host ? rd || host : key);
     const entry = byKey.get(key);
     if (entry) entry.tabIds.push(tab.id);
-    else byKey.set(key, { tabIds: [tab.id], host, rd });
+    else byKey.set(key, { tabIds: [tab.id], host, rd, label });
   }
 
-  const keys = [...byKey.keys()];
-  const singleKey = keys.length === 1 ? keys[0] : null;
+  const singleGroup = byKey.size === 1;
+  const multiBase = baseKeys.size > 1;
 
   for (const [key, info] of byKey.entries()) {
     if (info.tabIds.length < 2) continue;
@@ -376,13 +380,15 @@ async function groupWindowTabs(windowId, options) {
       });
 
       let title = key;
-      if (singleKey) {
-        // If there's only one subdomain, use the base domain as requested.
+      if (singleGroup) {
+        // If there's only one group, use the base domain as requested.
         title = info.rd || info.host || key;
+      } else if (multiBase) {
+        // In mixed-domain windows (common for misc), avoid ambiguous titles like "www".
+        title = info.host || key;
       } else {
-        const sub = getSubdomainLabel(info.host, info.rd);
-        // Prefer label-based title when grouping label differs from hostname.
-        title = sub || info.rd || info.host || key;
+        // In single-domain windows, keep short human-friendly titles (subdomain label, wikipedia language, etc.).
+        title = info.label || info.rd || info.host || key;
       }
 
       await api.tabGroupsUpdate(groupId, { title, collapsed: true });
@@ -698,8 +704,10 @@ function summarizeDuplicatesAmongTabs(tabs, includePinned) {
 }
 
 async function groupMatchingTabsByHostname(matches) {
-  /** @type {Map<number, Map<string, number[]>>} */
+  /** @type {Map<number, Map<string, { tabIds:number[], host:string, rd:string|null, label:string }>>} */
   const byWindow = new Map();
+  /** @type {Map<number, Set<string>>} */
+  const baseKeysByWindow = new Map();
 
   for (const tab of matches) {
     if (!Number.isFinite(tab.windowId)) continue;
@@ -707,22 +715,56 @@ async function groupMatchingTabsByHostname(matches) {
     if (tab.pinned) continue; // tab groups cannot include pinned tabs
 
     const host = getHostnameFromTab(tab);
+    let rd = null;
+    if (host && host.includes(".")) {
+      try {
+        rd = await getRegistrableDomain(host);
+      } catch {
+        rd = null;
+      }
+    }
+
     const label = host ? await getGroupLabelForHost(host) : "";
-    const key = label || host || getGroupKeyForTab(tab);
+    const key = host || getGroupKeyForTab(tab);
+
     const winMap = byWindow.get(tab.windowId) ?? new Map();
-    const arr = winMap.get(key) ?? [];
-    arr.push(tab.id);
-    winMap.set(key, arr);
+    const entry = winMap.get(key);
+    if (entry) {
+      entry.tabIds.push(tab.id);
+    } else {
+      winMap.set(key, { tabIds: [tab.id], host, rd, label });
+    }
     byWindow.set(tab.windowId, winMap);
+
+    const baseKey = host ? rd || host : key;
+    const baseKeys = baseKeysByWindow.get(tab.windowId) ?? new Set();
+    baseKeys.add(baseKey);
+    baseKeysByWindow.set(tab.windowId, baseKeys);
   }
 
   let groupsCreated = 0;
   for (const [windowId, hostMap] of byWindow.entries()) {
-    for (const [key, tabIds] of hostMap.entries()) {
-      if (tabIds.length < 2) continue;
+    const baseKeys = baseKeysByWindow.get(windowId) ?? new Set();
+    const singleGroup = hostMap.size === 1;
+    const multiBase = baseKeys.size > 1;
+
+    for (const [key, info] of hostMap.entries()) {
+      if (info.tabIds.length < 2) continue;
       try {
-        const groupId = await api.tabsGroup({ tabIds, createProperties: { windowId } });
-        const title = key || "group";
+        const groupId = await api.tabsGroup({
+          tabIds: info.tabIds,
+          createProperties: { windowId },
+        });
+
+        let title = key || "group";
+        if (singleGroup) {
+          title = info.rd || info.host || key || "group";
+        } else if (multiBase) {
+          title = info.host || key || "group";
+        } else {
+          title = info.label || info.rd || info.host || key || "group";
+        }
+
         await api.tabGroupsUpdate(groupId, { title, collapsed: true });
         groupsCreated += 1;
       } catch {
