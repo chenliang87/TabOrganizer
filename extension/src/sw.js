@@ -360,9 +360,11 @@ async function groupWindowTabs(windowId, options) {
       }
     }
 
-    // Membership key must be full hostname to avoid cross-domain collisions (e.g. many sites have "www").
-    const key = host || getGroupKeyForTab(tab);
-    baseKeys.add(host ? rd || host : key);
+    // Membership key: group by registrable domain (eTLD+1) when possible.
+    // This keeps YouTube/Google/etc. together even if pages are under "www", "m", etc.,
+    // while avoiding cross-domain collisions that happen with label-only keys like "www".
+    const key = (host ? rd || host : "") || getGroupKeyForTab(tab);
+    baseKeys.add(key);
     const entry = byKey.get(key);
     if (entry) entry.tabIds.push(tab.id);
     else byKey.set(key, { tabIds: [tab.id], host, rd, label });
@@ -382,13 +384,13 @@ async function groupWindowTabs(windowId, options) {
       let title = key;
       if (singleGroup) {
         // If there's only one group, use the base domain as requested.
-        title = info.rd || info.host || key;
+        title = key;
       } else if (multiBase) {
-        // In mixed-domain windows (common for misc), avoid ambiguous titles like "www".
-        title = info.host || key;
+        // Mixed-domain window: the key already encodes base domain/hostname.
+        title = key;
       } else {
-        // In single-domain windows, keep short human-friendly titles (subdomain label, wikipedia language, etc.).
-        title = info.label || info.rd || info.host || key;
+        // Single-base window: key is base domain; keep it stable.
+        title = key;
       }
 
       await api.tabGroupsUpdate(groupId, { title, collapsed: true });
@@ -725,7 +727,7 @@ async function groupMatchingTabsByHostname(matches) {
     }
 
     const label = host ? await getGroupLabelForHost(host) : "";
-    const key = host || getGroupKeyForTab(tab);
+    const key = (host ? rd || host : "") || getGroupKeyForTab(tab);
 
     const winMap = byWindow.get(tab.windowId) ?? new Map();
     const entry = winMap.get(key);
@@ -736,9 +738,8 @@ async function groupMatchingTabsByHostname(matches) {
     }
     byWindow.set(tab.windowId, winMap);
 
-    const baseKey = host ? rd || host : key;
     const baseKeys = baseKeysByWindow.get(tab.windowId) ?? new Set();
-    baseKeys.add(baseKey);
+    baseKeys.add(key);
     baseKeysByWindow.set(tab.windowId, baseKeys);
   }
 
@@ -758,11 +759,11 @@ async function groupMatchingTabsByHostname(matches) {
 
         let title = key || "group";
         if (singleGroup) {
-          title = info.rd || info.host || key || "group";
+          title = key || "group";
         } else if (multiBase) {
-          title = info.host || key || "group";
+          title = key || "group";
         } else {
-          title = info.label || info.rd || info.host || key || "group";
+          title = key || "group";
         }
 
         await api.tabGroupsUpdate(groupId, { title, collapsed: true });
