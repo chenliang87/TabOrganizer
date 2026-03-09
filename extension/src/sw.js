@@ -240,14 +240,19 @@ function safeUrl(url) {
   }
 }
 
+function getTabUrlForParsing(tab) {
+  const url = tab?.url || tab?.pendingUrl || "";
+  return typeof url === "string" ? url : "";
+}
+
 function getHostnameFromTab(tab) {
-  const u = safeUrl(tab.url || "");
+  const u = safeUrl(getTabUrlForParsing(tab));
   if (!u) return "";
   return (u.hostname || "").toLowerCase();
 }
 
 function getGroupKeyForTab(tab) {
-  const u = safeUrl(tab.url || "");
+  const u = safeUrl(getTabUrlForParsing(tab));
   if (!u) return "other";
   const host = (u.hostname || "").toLowerCase();
   if (host) return host;
@@ -292,6 +297,23 @@ async function getGroupLabelForHost(host) {
   const rd = host.includes(".") ? await getRegistrableDomain(host) : null;
   const sub = getSubdomainLabel(host, rd);
   return sub || rd || host;
+}
+
+function canonicalizeGroupKey(host, registrableDomain) {
+  const rd = String(registrableDomain || "").toLowerCase();
+  const h = String(host || "").toLowerCase();
+
+  if (rd === "youtu.be" || rd === "youtube-nocookie.com" || rd === "youtube.com") {
+    return "youtube.com";
+  }
+
+  // Unify Google ccTLDs (google.com, google.ca, google.co.uk, etc).
+  if (rd.startsWith("google.")) return "google.com";
+
+  // Unify ar5iv (arXiv HTML rendering mirror) with arxiv.org.
+  if (rd === "ar5iv.org") return "arxiv.org";
+
+  return rd || h || "";
 }
 
 async function groupWindowTabs(windowId, options) {
@@ -360,10 +382,9 @@ async function groupWindowTabs(windowId, options) {
       }
     }
 
-    // Membership key: group by registrable domain (eTLD+1) when possible.
-    // This keeps YouTube/Google/etc. together even if pages are under "www", "m", etc.,
-    // while avoiding cross-domain collisions that happen with label-only keys like "www".
-    const key = (host ? rd || host : "") || getGroupKeyForTab(tab);
+    // Membership key: canonicalized registrable domain when possible, else full hostname, else protocol bucket.
+    const canonical = host ? canonicalizeGroupKey(host, rd) : "";
+    const key = canonical || host || getGroupKeyForTab(tab);
     baseKeys.add(key);
     const entry = byKey.get(key);
     if (entry) entry.tabIds.push(tab.id);
@@ -727,7 +748,8 @@ async function groupMatchingTabsByHostname(matches) {
     }
 
     const label = host ? await getGroupLabelForHost(host) : "";
-    const key = (host ? rd || host : "") || getGroupKeyForTab(tab);
+    const canonical = host ? canonicalizeGroupKey(host, rd) : "";
+    const key = canonical || host || getGroupKeyForTab(tab);
 
     const winMap = byWindow.get(tab.windowId) ?? new Map();
     const entry = winMap.get(key);

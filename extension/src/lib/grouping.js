@@ -9,7 +9,8 @@ function safeParseUrl(url) {
 }
 
 async function getDomainKeyForTab(tab) {
-  const urlObj = safeParseUrl(tab.url || "");
+  const url = tab?.url || tab?.pendingUrl || "";
+  const urlObj = safeParseUrl(typeof url === "string" ? url : "");
   if (!urlObj) return null;
   if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") return null;
 
