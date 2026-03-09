@@ -316,6 +316,67 @@ function canonicalizeGroupKey(host, registrableDomain) {
   return rd || h || "";
 }
 
+async function groupTabIdsInWindow(windowId, tabIds, debugKey) {
+  const tabsNow = await api.tabsQuery({ windowId });
+  const byId = new Map(
+    tabsNow
+      .filter((t) => Number.isFinite(t.id))
+      .map((t) => [t.id, t]),
+  );
+
+  const eligibleIds = [...new Set(tabIds)]
+    .filter((id) => Number.isFinite(id) && byId.has(id))
+    .filter((id) => !byId.get(id).pinned);
+
+  if (eligibleIds.length < 2) return null;
+
+  eligibleIds.sort((a, b) => (byId.get(a)?.index ?? 0) - (byId.get(b)?.index ?? 0));
+
+  try {
+    return await api.tabsGroup({
+      tabIds: eligibleIds,
+      createProperties: { windowId },
+    });
+  } catch (e) {
+    // Fallback: create group with first, then add others one-by-one.
+    console.warn("tabs.group batch failed; falling back", {
+      windowId,
+      key: debugKey,
+      err: e?.message || String(e),
+    });
+  }
+
+  let groupId = null;
+  try {
+    groupId = await api.tabsGroup({
+      tabIds: [eligibleIds[0]],
+      createProperties: { windowId },
+    });
+  } catch (e) {
+    console.warn("tabs.group create failed", {
+      windowId,
+      key: debugKey,
+      err: e?.message || String(e),
+    });
+    return null;
+  }
+
+  for (const id of eligibleIds.slice(1)) {
+    try {
+      await api.tabsGroup({ groupId, tabIds: [id] });
+    } catch (e) {
+      console.warn("tabs.group add failed", {
+        windowId,
+        key: debugKey,
+        tabId: id,
+        err: e?.message || String(e),
+      });
+    }
+  }
+
+  return groupId;
+}
+
 async function groupWindowTabs(windowId, options) {
   if (!options.groupTabs) return;
 
@@ -397,10 +458,8 @@ async function groupWindowTabs(windowId, options) {
   for (const [key, info] of byKey.entries()) {
     if (info.tabIds.length < 2) continue;
     try {
-      const groupId = await api.tabsGroup({
-        tabIds: info.tabIds,
-        createProperties: { windowId },
-      });
+      const groupId = await groupTabIdsInWindow(windowId, info.tabIds, key);
+      if (!Number.isFinite(groupId)) continue;
 
       let title = key;
       if (singleGroup) {
@@ -415,8 +474,12 @@ async function groupWindowTabs(windowId, options) {
       }
 
       await api.tabGroupsUpdate(groupId, { title, collapsed: true });
-    } catch {
-      // ignore
+    } catch (e) {
+      console.warn("groupWindowTabs failed", {
+        windowId,
+        key,
+        err: e?.message || String(e),
+      });
     }
   }
 }
@@ -767,6 +830,24 @@ async function groupMatchingTabsByHostname(matches) {
 
   let groupsCreated = 0;
   for (const [windowId, hostMap] of byWindow.entries()) {
+    // Best-effort: ungroup matching tabs first so they can be regrouped.
+    try {
+      const tabsNow = await api.tabsQuery({ windowId });
+      const matchIds = new Set(
+        [...hostMap.values()].flatMap((v) => v.tabIds).filter((id) => Number.isFinite(id)),
+      );
+      const toUngroup = tabsNow
+        .filter((t) => matchIds.has(t.id) && Number.isFinite(t.groupId) && t.groupId !== -1)
+        .map((t) => t.id)
+        .filter((id) => Number.isFinite(id));
+      if (toUngroup.length) await api.tabsUngroup(toUngroup);
+    } catch (e) {
+      console.warn("groupMatches: ungroup failed", {
+        windowId,
+        err: e?.message || String(e),
+      });
+    }
+
     const baseKeys = baseKeysByWindow.get(windowId) ?? new Set();
     const singleGroup = hostMap.size === 1;
     const multiBase = baseKeys.size > 1;
@@ -774,10 +855,8 @@ async function groupMatchingTabsByHostname(matches) {
     for (const [key, info] of hostMap.entries()) {
       if (info.tabIds.length < 2) continue;
       try {
-        const groupId = await api.tabsGroup({
-          tabIds: info.tabIds,
-          createProperties: { windowId },
-        });
+        const groupId = await groupTabIdsInWindow(windowId, info.tabIds, key);
+        if (!Number.isFinite(groupId)) continue;
 
         let title = key || "group";
         if (singleGroup) {
@@ -790,8 +869,12 @@ async function groupMatchingTabsByHostname(matches) {
 
         await api.tabGroupsUpdate(groupId, { title, collapsed: true });
         groupsCreated += 1;
-      } catch {
-        // ignore
+      } catch (e) {
+        console.warn("groupMatches failed", {
+          windowId,
+          key,
+          err: e?.message || String(e),
+        });
       }
     }
   }
