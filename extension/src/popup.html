@@ -181,6 +181,28 @@
         text-overflow: ellipsis;
         white-space: nowrap;
       }
+      .debugActions {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .debugActions button {
+        width: auto;
+        flex: 1;
+      }
+      .debugBlock {
+        margin-top: 10px;
+        max-height: 280px;
+        overflow: auto;
+        border: 1px solid #eee;
+        border-radius: 8px;
+        background: #fff;
+        padding: 8px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
+      }
     </style>
   </head>
   <body>
@@ -241,6 +263,13 @@
         </div>
 
         <button id="organizeBtn" disabled>Organize tabs</button>
+        <div class="debugActions">
+          <button id="debugGroupingBtn" class="btnSecondary" type="button">
+            Inspect grouping
+          </button>
+        </div>
+        <div id="debugGroupingStatus" class="muted" style="margin-top: 8px"></div>
+        <div id="debugGroupingOutput" class="debugBlock" style="display: none"></div>
       </div>
 
       <div id="panelSort" class="panel">

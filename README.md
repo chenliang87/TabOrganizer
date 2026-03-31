@@ -3,7 +3,7 @@
 A **Chrome Manifest V3 extension** that organizes the tabs in your **current Chrome Profile** into new windows:
 
 - Groups tabs by **registrable domain (eTLD+1)** (so `mail.google.com` + `docs.google.com` → `google.com`)
-- Creates a **new window per domain** when that domain has **more than N tabs** (default `N=5`)
+- Creates a **new window per domain** when that domain has **at least N tabs** (default `N=5`)
 - Moves all remaining tabs into a **single “misc”** window
 - Sorts tabs inside each new window by **most recently visited first** (using `tab.lastAccessed`)
 - Closes **duplicate tabs** (same URL, ignoring `#...` fragments) before organizing (keeps the most recently visited one)
@@ -46,7 +46,7 @@ In the popup, open the **Search** tab to:
 
 Open **Options…** from the popup to configure:
 
-- **Threshold**: “more than N tabs” per domain → gets its own window
+- **Threshold**: “at least N tabs” per domain → gets its own window
 - **Include pinned tabs**: off by default (safer)
 - **Close emptied old windows**: on by default
 - **Close duplicate tabs**: on by default (keeps the most recently visited one)

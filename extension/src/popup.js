@@ -12,6 +12,9 @@ const els = {
   closeEmptyWindows: document.getElementById("closeEmptyWindows"),
   groupTabs: document.getElementById("groupTabs"),
   organizeBtn: document.getElementById("organizeBtn"),
+  debugGroupingBtn: document.getElementById("debugGroupingBtn"),
+  debugGroupingStatus: document.getElementById("debugGroupingStatus"),
+  debugGroupingOutput: document.getElementById("debugGroupingOutput"),
   currentWindowLabel: document.getElementById("currentWindowLabel"),
   currentWindowSortMode: document.getElementById("currentWindowSortMode"),
   sortCurrentWindowBtn: document.getElementById("sortCurrentWindowBtn"),
@@ -107,6 +110,57 @@ function showSummary({
 
 async function sendMessage(msg) {
   return await chrome.runtime.sendMessage(msg);
+}
+
+function formatDebugGrouping(data) {
+  const options = data?.options || {};
+  const buckets = Array.isArray(data?.buckets) ? data.buckets : [];
+  const tabs = Array.isArray(data?.tabs) ? data.tabs : [];
+  const skipped = tabs.filter((t) => t.reason !== "eligible");
+  const unbucketedEligible = tabs.filter((t) => t.reason === "eligible" && !t.domainKey);
+
+  const lines = [
+    `totalTabs: ${data?.totalTabs ?? 0}`,
+    `threshold: ${options.threshold ?? "-"}`,
+    `includePinned: ${options.includePinned ? "yes" : "no"}`,
+    "",
+    "buckets:",
+  ];
+
+  if (!buckets.length) {
+    lines.push("  (none)");
+  } else {
+    for (const bucket of buckets) {
+      lines.push(`  ${bucket.key} (${bucket.count})`);
+      for (const tab of bucket.tabs) {
+        const tabNo = Number.isFinite(tab.index) ? tab.index + 1 : "?";
+        lines.push(
+          `    - win ${tab.windowId ?? "?"} tab ${tabNo}: ${tab.hostname || "(no host)"} | ${tab.title || "(untitled)"}`,
+        );
+      }
+    }
+  }
+
+  lines.push("");
+  lines.push("skipped:");
+  if (!skipped.length && !unbucketedEligible.length) {
+    lines.push("  (none)");
+  } else {
+    for (const tab of skipped) {
+      const tabNo = Number.isFinite(tab.index) ? tab.index + 1 : "?";
+      lines.push(
+        `  - ${tab.reason} | win ${tab.windowId ?? "?"} tab ${tabNo} | ${tab.hostname || "(no host)"} | ${tab.url || "(no url)"}`,
+      );
+    }
+    for (const tab of unbucketedEligible) {
+      const tabNo = Number.isFinite(tab.index) ? tab.index + 1 : "?";
+      lines.push(
+        `  - eligible-without-key | win ${tab.windowId ?? "?"} tab ${tabNo} | ${tab.hostname || "(no host)"} | ${tab.url || "(no url)"}`,
+      );
+    }
+  }
+
+  return lines.join("\n");
 }
 
 function windowLabel(win, tabs) {
@@ -213,6 +267,27 @@ els.organizeBtn.addEventListener("click", async () => {
   } catch (e) {
     setStatus(`Error: ${e?.message || String(e)}`);
     els.organizeBtn.disabled = false;
+  }
+});
+
+els.debugGroupingBtn.addEventListener("click", async () => {
+  els.debugGroupingBtn.disabled = true;
+  els.debugGroupingStatus.textContent = "Inspecting grouping…";
+  els.debugGroupingOutput.style.display = "none";
+  els.debugGroupingOutput.textContent = "";
+
+  try {
+    const resp = await sendMessage({ type: "debugGrouping" });
+    if (!resp || resp.ok !== true) {
+      throw new Error(resp?.error || "Debug inspect failed");
+    }
+    els.debugGroupingOutput.textContent = formatDebugGrouping(resp.data);
+    els.debugGroupingOutput.style.display = "block";
+    els.debugGroupingStatus.textContent = "Grouping inspection ready.";
+  } catch (e) {
+    els.debugGroupingStatus.textContent = `Error: ${e?.message || String(e)}`;
+  } finally {
+    els.debugGroupingBtn.disabled = false;
   }
 });
 

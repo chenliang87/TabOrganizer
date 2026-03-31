@@ -21,10 +21,44 @@ async function getDomainKeyForTab(tab) {
   return rd || hostname;
 }
 
+export async function getDomainDebugInfoForTab(tab, options = {}) {
+  const includePinned = options?.includePinned === true;
+  const url = tab?.url || tab?.pendingUrl || "";
+  const parsedUrl = safeParseUrl(typeof url === "string" ? url : "");
+  const protocol = parsedUrl?.protocol || "";
+  const hostname = (parsedUrl?.hostname || "").toLowerCase();
+  const isHttp = protocol === "http:" || protocol === "https:";
+  const registrableDomain =
+    isHttp && hostname ? await getRegistrableDomain(hostname) : null;
+  const domainKey =
+    isHttp && hostname ? registrableDomain || hostname : null;
+
+  let reason = "eligible";
+  if (!includePinned && tab?.pinned) reason = "ignored-pinned";
+  else if (!parsedUrl) reason = "invalid-url";
+  else if (!isHttp) reason = "non-http";
+  else if (!hostname) reason = "no-hostname";
+
+  return {
+    id: Number.isFinite(tab?.id) ? tab.id : null,
+    windowId: Number.isFinite(tab?.windowId) ? tab.windowId : null,
+    index: Number.isFinite(tab?.index) ? tab.index : null,
+    pinned: tab?.pinned === true,
+    active: tab?.active === true,
+    title: typeof tab?.title === "string" ? tab.title : "",
+    url: typeof url === "string" ? url : "",
+    protocol,
+    hostname,
+    registrableDomain,
+    domainKey,
+    reason,
+  };
+}
+
 /**
  * Returns a plan describing which tabs go into dedicated domain windows vs misc.
  *
- * - Dedicated window: domain groups with size > threshold
+ * - Dedicated window: domain groups with size >= threshold
  * - Misc window: everything else that is movable/eligible
  */
 export async function buildGroupingPlan(tabs, options) {
@@ -41,20 +75,20 @@ export async function buildGroupingPlan(tabs, options) {
   const ignored = [];
 
   for (const tab of tabs) {
-    if (!includePinned && tab.pinned) {
+    const debug = await getDomainDebugInfoForTab(tab, { includePinned });
+    if (debug.reason === "ignored-pinned") {
       ignored.push(tab);
       continue;
     }
 
-    const key = await getDomainKeyForTab(tab);
-    if (!key) {
+    if (!debug.domainKey) {
       misc.push(tab);
       continue;
     }
 
-    const arr = byDomain.get(key);
+    const arr = byDomain.get(debug.domainKey);
     if (arr) arr.push(tab);
-    else byDomain.set(key, [tab]);
+    else byDomain.set(debug.domainKey, [tab]);
   }
 
   /** @type {{ domain: string, tabs: chrome.tabs.Tab[] }[]} */
@@ -63,7 +97,7 @@ export async function buildGroupingPlan(tabs, options) {
   const miscFinal = [...misc];
 
   for (const [domain, groupTabs] of byDomain.entries()) {
-    if (groupTabs.length > threshold) {
+    if (groupTabs.length >= threshold) {
       dedicated.push({ domain, tabs: groupTabs });
     } else {
       miscFinal.push(...groupTabs);

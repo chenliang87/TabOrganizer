@@ -1,4 +1,4 @@
-import { buildGroupingPlan } from "./lib/grouping.js";
+import { buildGroupingPlan, getDomainDebugInfoForTab } from "./lib/grouping.js";
 import { sortTabsBySubdomainThenRecency } from "./lib/sort.js";
 import { getRegistrableDomain } from "./lib/domain.js";
 
@@ -33,6 +33,8 @@ const api = {
       groupId,
       updateProps,
     ),
+  tabGroupsMove: (groupId, moveProps) =>
+    promisifyChrome(chrome.tabGroups.move.bind(chrome.tabGroups), groupId, moveProps),
   tabGroupsGet: (groupId) =>
     promisifyChrome(chrome.tabGroups.get.bind(chrome.tabGroups), groupId),
   storageLocalGet: (keys) =>
@@ -527,17 +529,26 @@ async function reorderGroupsBySizeThenName(windowId) {
   });
 
   const ungroupedSorted = [...ungrouped].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
-  const desiredUnpinnedIds = [
-    ...groupInfos.flatMap((g) => g.tabs.map((t) => t.id)),
-    ...ungroupedSorted.map((t) => t.id),
-  ].filter((id) => Number.isFinite(id));
+  const ungroupedIds = ungroupedSorted
+    .map((t) => t.id)
+    .filter((id) => Number.isFinite(id));
 
-  if (!desiredUnpinnedIds.length) return;
+  // Moving individual tabs after grouping can break Chrome tab groups.
+  // Reorder ungrouped tabs separately, then move whole groups as blocks.
+  if (ungroupedIds.length) {
+    try {
+      await api.tabsMove(ungroupedIds, { windowId, index: -1 });
+    } catch {
+      // ignore
+    }
+  }
 
-  try {
-    await api.tabsMove(desiredUnpinnedIds, { windowId, index: pinned.length });
-  } catch {
-    // ignore
+  for (const group of [...groupInfos].reverse()) {
+    try {
+      await api.tabGroupsMove(group.groupId, { index: pinned.length });
+    } catch {
+      // ignore
+    }
   }
 }
 
@@ -638,6 +649,68 @@ async function buildPreview() {
       domain: g.domain,
       count: g.tabs.length,
     })),
+  };
+}
+
+async function buildGroupingDebug() {
+  const options = await getOptions();
+  const tabs = await api.tabsQuery({});
+  const inspectedTabs = [];
+
+  for (const tab of tabs) {
+    inspectedTabs.push(await getDomainDebugInfoForTab(tab, options));
+  }
+
+  /** @type {Map<string, { key: string, count: number, tabs: any[] }>} */
+  const byKey = new Map();
+  for (const item of inspectedTabs) {
+    if (!item.domainKey) continue;
+    const existing = byKey.get(item.domainKey);
+    if (existing) {
+      existing.count += 1;
+      existing.tabs.push(item);
+    } else {
+      byKey.set(item.domainKey, {
+        key: item.domainKey,
+        count: 1,
+        tabs: [item],
+      });
+    }
+  }
+
+  const buckets = [...byKey.values()]
+    .sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return a.key.localeCompare(b.key);
+    })
+    .map((bucket) => ({
+      key: bucket.key,
+      count: bucket.count,
+      tabs: bucket.tabs
+        .slice()
+        .sort((a, b) => {
+          if ((a.windowId ?? 0) !== (b.windowId ?? 0)) {
+            return (a.windowId ?? 0) - (b.windowId ?? 0);
+          }
+          return (a.index ?? 0) - (b.index ?? 0);
+        })
+        .map((item) => ({
+          id: item.id,
+          windowId: item.windowId,
+          index: item.index,
+          pinned: item.pinned,
+          title: item.title,
+          hostname: item.hostname,
+          registrableDomain: item.registrableDomain,
+          url: item.url,
+        })),
+    }));
+
+  return {
+    options,
+    totalTabs: inspectedTabs.length,
+    buckets,
+    tabs: inspectedTabs,
   };
 }
 
@@ -937,6 +1010,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
     if (msg.type === "organize") {
       const data = await organizeNow();
+      sendResponse({ ok: true, data });
+      return;
+    }
+
+    if (msg.type === "debugGrouping") {
+      const data = await buildGroupingDebug();
       sendResponse({ ok: true, data });
       return;
     }
