@@ -11,13 +11,19 @@ A **Chrome Manifest V3 extension** that organizes the tabs in your **current Chr
 - Creates **Chrome tab groups** inside each new window (grouped by subdomain/hostname; falls back to base domain)
 - Optionally closes old windows that become empty after moving tabs
 
-## Install (Developer Mode)
+## Install
+
+### Chrome Web Store
+
+<!-- TODO: replace with actual URL after publishing -->
+Install from the [Chrome Web Store](https://chrome.google.com/webstore/detail/taborganizer/EXTENSION_ID_HERE).
+
+### Developer Mode (local)
 
 1. In Chrome, open `chrome://extensions`
 2. Enable **Developer mode**
 3. Click **Load unpacked**
-4. Select this folder:
-   - `/Users/albertgg/Desktop/TabOrganizer/extension`
+4. Select the `extension` folder from this repo
 
 Repeat the above in any other Chrome Profile where you want TabOrganizer available (extensions are installed per-profile).
 
@@ -63,7 +69,21 @@ Open **Options…** from the popup to configure:
 
 ## Public Suffix List
 
-The eTLD+1 logic uses a vendored copy of the Public Suffix List:
+The eTLD+1 logic uses a vendored copy of the [Public Suffix List](https://publicsuffix.org/):
 
 - `extension/src/lib/public_suffix_list.dat`
+
+To refresh it: download the latest from `https://publicsuffix.org/list/public_suffix_list.dat` and replace the file.
+
+## Packaging for Chrome Web Store
+
+```bash
+./package.sh
+```
+
+This creates `TabOrganizer.zip` at the repo root, ready to upload to the [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole).
+
+## Privacy
+
+All processing happens locally. No data is collected or transmitted. See [PRIVACY_POLICY.md](PRIVACY_POLICY.md).
 

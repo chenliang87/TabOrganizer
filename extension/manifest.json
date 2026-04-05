@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "TabOrganizer",
-  "version": "0.1.0",
-  "description": "Organize tabs into new windows by domain and recency.",
+  "version": "1.0.0",
+  "description": "Organize browser tabs into windows by domain, deduplicate URLs, clean up Zoom links, and create tab groups.",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -25,6 +25,7 @@
     "type": "module"
   },
   "permissions": ["tabs", "windows", "storage", "tabGroups"],
-  "host_permissions": ["http://*/*", "https://*/*"]
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "homepage_url": "https://github.com/chenliang87/TabOrganizer"
 }
 

@@ -47,10 +47,16 @@ const els = {
   openOptions: document.getElementById("openOptions"),
 };
 
-const isTabMode = new URL(window.location.href).searchParams.get("mode") === "tab";
+const params = new URL(window.location.href).searchParams;
+const isTabMode = params.get("mode") === "tab";
 if (isTabMode) {
   document.body.classList.add("mode-tab");
   if (els.openFullScreen) els.openFullScreen.style.display = "none";
+}
+
+if (params.has("debug")) {
+  const debugSection = document.getElementById("debugSection");
+  if (debugSection) debugSection.style.display = "";
 }
 
 if (els.versionBadge) {
