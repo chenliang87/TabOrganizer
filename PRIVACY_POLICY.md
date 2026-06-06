@@ -33,4 +33,4 @@ If this policy changes, the update will be posted here and the extension version
 
 ## Contact
 
-For questions about this policy, open an issue at [https://github.com/chenliang87/TabOrganizer](https://github.com/chenliang87/TabOrganizer).
+For questions about this policy, email [albert@odds.trade](mailto:albert@odds.trade), join the community on [Discord](https://discord.gg/BCn4DqDMv), or open an issue at [https://github.com/chenliang87/TabOrganizer](https://github.com/chenliang87/TabOrganizer).

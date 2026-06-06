@@ -995,6 +995,10 @@ async function closeDuplicatesAmongTabs(matches, options) {
   return { closedCount: toClose.length };
 }
 
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.runtime.setUninstallURL("https://discord.gg/BCn4DqDMv");
+});
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     if (!msg || typeof msg.type !== "string") {

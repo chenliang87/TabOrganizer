@@ -45,7 +45,12 @@ const els = {
   clearResults: document.getElementById("clearResults"),
   clearRunBtn: document.getElementById("clearRunBtn"),
   openOptions: document.getElementById("openOptions"),
+  openCommunity: document.getElementById("openCommunity"),
+  openDonate: document.getElementById("openDonate"),
 };
+
+const DISCORD_INVITE_URL = "https://discord.gg/BCn4DqDMv";
+const DONATE_URL = "https://buymeacoffee.com/tab.org?new=1";
 
 const params = new URL(window.location.href).searchParams;
 const isTabMode = params.get("mode") === "tab";
@@ -300,6 +305,16 @@ els.debugGroupingBtn.addEventListener("click", async () => {
 els.openOptions.addEventListener("click", async (e) => {
   e.preventDefault();
   await chrome.runtime.openOptionsPage();
+});
+
+els.openCommunity?.addEventListener("click", async (e) => {
+  e.preventDefault();
+  await chrome.tabs.create({ url: DISCORD_INVITE_URL });
+});
+
+els.openDonate?.addEventListener("click", async (e) => {
+  e.preventDefault();
+  await chrome.tabs.create({ url: DONATE_URL });
 });
 
 els.sortCurrentWindowBtn.addEventListener("click", async () => {
